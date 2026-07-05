@@ -1,36 +1,34 @@
 using System;
 using System.IO;
 
-namespace LuminaControl
+namespace LuminaControl;
+
+public static class Logger
 {
-    public static class Logger
+    private static readonly object LogLock = new();
+    private static readonly string LogPath = @"C:\Users\Neuron\Desktop\LuminaControl_Log.txt";
+
+    public static void Init()
     {
-        private static readonly object _logLock = new object();
-        private static readonly string LogPath = @"C:\Users\Neuron\Desktop\LuminaControl_Log.txt";
-
-        public static void Init()
+        try
         {
-            try
+            lock (LogLock)
             {
-                lock (_logLock)
-                {
-                    File.WriteAllText(LogPath, string.Format("=== LOG STARTED: {0} ===\r\n", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")));
-                }
+                File.WriteAllText(LogPath, $"=== LOG STARTED: {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===\r\n");
             }
-            catch {}
         }
+        catch { }
+    }
 
-        public static void Log(string message)
+    public static void Log(string message)
+    {
+        try
         {
-            try
+            lock (LogLock)
             {
-                lock (_logLock)
-                {
-                    string time = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-                    File.AppendAllText(LogPath, string.Format("[{0}] {1}\r\n", time, message));
-                }
+                File.AppendAllText(LogPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}\r\n");
             }
-            catch {}
         }
+        catch { }
     }
 }

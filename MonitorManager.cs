@@ -2,281 +2,259 @@ using System;
 using System.Collections.Generic;
 using System.Management;
 using System.Runtime.InteropServices;
-using System.Text;
 
-namespace LuminaControl
+namespace LuminaControl;
+
+public interface IMonitor
 {
-    public interface IMonitor
+    string Id { get; }
+    string Name { get; }
+    bool IsInternal { get; }
+    int GetBrightness();
+    void SetBrightness(int brightness);
+}
+
+public class InternalMonitor(string id, string name) : IMonitor
+{
+    public string Id { get; } = id;
+    public string Name { get; } = name;
+    public bool IsInternal => true;
+
+    public int GetBrightness()
     {
-        string Id { get; }
-        string Name { get; }
-        bool IsInternal { get; }
-        int GetBrightness();
-        void SetBrightness(int brightness);
+        Logger.Log("InternalMonitor: GetBrightness starting WMI query...");
+        try
+        {
+            using var searcher = new ManagementObjectSearcher(new ManagementScope(@"root\wmi"), new SelectQuery("WmiMonitorBrightness"));
+            using var collection = searcher.Get();
+            foreach (var o in collection)
+            {
+                if (o is not ManagementObject mObj) continue;
+                
+                var instanceName = mObj["InstanceName"]?.ToString();
+                if (string.IsNullOrEmpty(Id) || instanceName == Id)
+                {
+                    int curBrightness = Convert.ToInt32(mObj["CurrentBrightness"]);
+                    Logger.Log($"InternalMonitor: GetBrightness success, val = {curBrightness}");
+                    return curBrightness;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Log($"InternalMonitor: GetBrightness FAILED: {ex.Message}");
+        }
+        return 50; // Fallback
     }
 
-    public class InternalMonitor : IMonitor
+    public void SetBrightness(int brightness)
     {
-        public string Id { get; private set; }
-        public string Name { get; private set; }
-        public bool IsInternal { get { return true; } }
-
-        public InternalMonitor(string id, string name)
+        brightness = Math.Clamp(brightness, 0, 100);
+        Logger.Log($"InternalMonitor: SetBrightness to {brightness} starting WMI query...");
+        try
         {
-            Id = id;
-            Name = name;
-        }
-
-        public int GetBrightness()
-        {
-            Logger.Log("InternalMonitor: GetBrightness starting WMI query...");
-            try
+            using var searcher = new ManagementObjectSearcher(new ManagementScope(@"root\wmi"), new SelectQuery("WmiMonitorBrightnessMethods"));
+            using var collection = searcher.Get();
+            foreach (var o in collection)
             {
-                using (var searcher = new ManagementObjectSearcher(new ManagementScope(@"root\wmi"), new SelectQuery("WmiMonitorBrightness")))
+                if (o is not ManagementObject mObj) continue;
+
+                var instanceName = mObj["InstanceName"]?.ToString();
+                if (string.IsNullOrEmpty(Id) || instanceName == Id)
                 {
-                    using (var collection = searcher.Get())
-                    {
-                        foreach (ManagementObject mObj in collection)
-                        {
-                            // Match instance name if possible, or just return first
-                            object instNameObj = mObj["InstanceName"];
-                            string instanceName = instNameObj != null ? instNameObj.ToString() : null;
-                            if (string.IsNullOrEmpty(Id) || instanceName == Id)
-                            {
-                                int curBrightness = Convert.ToInt32(mObj["CurrentBrightness"]);
-                                Logger.Log("InternalMonitor: GetBrightness success, val = " + curBrightness);
-                                return curBrightness;
-                            }
-                        }
-                    }
+                    Logger.Log($"InternalMonitor: WmiSetBrightness WMI method invoking for value {brightness}...");
+                    mObj.InvokeMethod("WmiSetBrightness", [uint.MaxValue, (byte)brightness]);
+                    Logger.Log("InternalMonitor: WmiSetBrightness WMI method returned");
                 }
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine("Error reading WMI brightness: " + ex.Message);
-            }
-            return 50; // Fallback
         }
-
-        public void SetBrightness(int brightness)
+        catch (Exception ex)
         {
-            if (brightness < 0) brightness = 0;
-            Logger.Log("InternalMonitor: SetBrightness to " + brightness + " starting WMI query...");
-            try
-            {
-                using (var searcher = new ManagementObjectSearcher(new ManagementScope(@"root\wmi"), new SelectQuery("WmiMonitorBrightnessMethods")))
-                {
-                    using (var collection = searcher.Get())
-                    {
-                        foreach (ManagementObject mObj in collection)
-                        {
-                            object instNameObj = mObj["InstanceName"];
-                            string instanceName = instNameObj != null ? instNameObj.ToString() : null;
-                            if (string.IsNullOrEmpty(Id) || instanceName == Id)
-                            {
-                                Logger.Log("InternalMonitor: WmiSetBrightness WMI method invoking for value " + brightness + "...");
-                                mObj.InvokeMethod("WmiSetBrightness", new object[] { uint.MaxValue, (byte)brightness });
-                                Logger.Log("InternalMonitor: WmiSetBrightness WMI method returned");
-                            }
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine("Error setting WMI brightness: " + ex.Message);
-            }
+            Logger.Log($"InternalMonitor: SetBrightness FAILED: {ex.Message}");
         }
     }
+}
 
-    public class ExternalMonitor : IMonitor
+public class ExternalMonitor(string id, string name, int index) : IMonitor
+{
+    public string Id { get; } = id;
+    public string Name { get; } = name;
+    public bool IsInternal => false;
+    private readonly int _index = index;
+
+    public int GetBrightness()
     {
-        public string Id { get; private set; }
-        public string Name { get; private set; }
-        public bool IsInternal { get { return false; } }
-        private int _index; // The global index of this physical monitor
-
-        public ExternalMonitor(string id, string name, int index)
+        Logger.Log($"ExternalMonitor({Name}): GetBrightness start");
+        int currentBrightness = 50;
+        MonitorApiHelper.OperateOnPhysicalMonitor(_index, (hPhys) =>
         {
-            Id = id;
-            Name = name;
-            _index = index;
-        }
-
-        public int GetBrightness()
-        {
-            Logger.Log("ExternalMonitor(" + Name + "): GetBrightness start");
-            int currentBrightness = 50;
-            MonitorApiHelper.OperateOnPhysicalMonitor(_index, (hPhys) =>
+            Logger.Log($"ExternalMonitor({Name}): calling GetMonitorBrightness API...");
+            if (MonitorApiHelper.GetMonitorBrightness(hPhys, out _, out var cur, out _))
             {
-                uint min, cur, max;
-                Logger.Log("ExternalMonitor(" + Name + "): calling GetMonitorBrightness API...");
-                if (MonitorApiHelper.GetMonitorBrightness(hPhys, out min, out cur, out max))
-                {
-                    currentBrightness = (int)cur;
-                    Logger.Log("ExternalMonitor(" + Name + "): GetMonitorBrightness API success, val = " + cur);
-                }
-                else
-                {
-                    Logger.Log("ExternalMonitor(" + Name + "): GetMonitorBrightness API FAILED");
-                }
-            });
-            return currentBrightness;
-        }
-
-        public void SetBrightness(int brightness)
-        {
-            if (brightness < 0) brightness = 0;
-            if (brightness > 100) brightness = 100;
-
-            Logger.Log("ExternalMonitor(" + Name + "): SetBrightness to " + brightness + " start");
-            MonitorApiHelper.OperateOnPhysicalMonitor(_index, (hPhys) =>
+                currentBrightness = (int)cur;
+                Logger.Log($"ExternalMonitor({Name}): GetMonitorBrightness API success, val = {cur}");
+            }
+            else
             {
-                Logger.Log("ExternalMonitor(" + Name + "): calling SetMonitorBrightness API for value " + brightness + "...");
-                bool success = MonitorApiHelper.SetMonitorBrightness(hPhys, (uint)brightness);
-                Logger.Log("ExternalMonitor(" + Name + "): SetMonitorBrightness API returned, success = " + success);
-            });
-        }
+                Logger.Log($"ExternalMonitor({Name}): GetMonitorBrightness API FAILED");
+            }
+        });
+        return currentBrightness;
     }
 
-    internal static class MonitorApiHelper
+    public void SetBrightness(int brightness)
     {
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
-        public struct PHYSICAL_MONITOR
+        brightness = Math.Clamp(brightness, 0, 100);
+        Logger.Log($"ExternalMonitor({Name}): SetBrightness to {brightness} start");
+        MonitorApiHelper.OperateOnPhysicalMonitor(_index, (hPhys) =>
         {
-            public IntPtr hPhysicalMonitor;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
-            public string szPhysicalMonitorDescription;
-        }
+            Logger.Log($"ExternalMonitor({Name}): calling SetMonitorBrightness API for value {brightness}...");
+            bool success = MonitorApiHelper.SetMonitorBrightness(hPhys, (uint)brightness);
+            Logger.Log($"ExternalMonitor({Name}): SetMonitorBrightness API returned, success = {success}");
+        });
+    }
+}
 
-        public delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
-
-        [StructLayout(LayoutKind.Sequential)]
-        public struct RECT
-        {
-            public int left;
-            public int top;
-            public int right;
-            public int bottom;
-        }
-
-        [DllImport("user32.dll")]
-        public static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumProc lpfnEnum, IntPtr dwData);
-
-        [DllImport("dxva2.dll", SetLastError = true)]
-        public static extern bool GetNumberOfPhysicalMonitorsFromHMONITOR(IntPtr hMonitor, out uint pdwNumberOfPhysicalMonitors);
-
-        [DllImport("dxva2.dll", SetLastError = true)]
-        public static extern bool GetPhysicalMonitorsFromHMONITOR(IntPtr hMonitor, uint dwPhysicalMonitorArraySize, [Out] PHYSICAL_MONITOR[] pPhysicalMonitorArray);
-
-        [DllImport("dxva2.dll", SetLastError = true)]
-        public static extern bool DestroyPhysicalMonitors(uint dwPhysicalMonitorArraySize, PHYSICAL_MONITOR[] pPhysicalMonitorArray);
-
-        [DllImport("dxva2.dll", SetLastError = true)]
-        public static extern bool GetMonitorBrightness(IntPtr hMonitor, out uint pdwMinimumBrightness, out uint pdwCurrentBrightness, out uint pdwMaximumBrightness);
-
-        [DllImport("dxva2.dll", SetLastError = true)]
-        public static extern bool SetMonitorBrightness(IntPtr hMonitor, uint dwNewBrightness);
-
-        public delegate void PhysicalMonitorAction(IntPtr hPhysicalMonitor);
-
-        public static void OperateOnPhysicalMonitor(int targetIndex, PhysicalMonitorAction action)
-        {
-            int currentIndex = 0;
-            bool found = false;
-
-            EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, delegate (IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData)
-            {
-                if (found) return true;
-
-                uint numPhysicalMonitors = 0;
-                if (GetNumberOfPhysicalMonitorsFromHMONITOR(hMonitor, out numPhysicalMonitors) && numPhysicalMonitors > 0)
-                {
-                    PHYSICAL_MONITOR[] physicalMonitors = new PHYSICAL_MONITOR[numPhysicalMonitors];
-                    if (GetPhysicalMonitorsFromHMONITOR(hMonitor, numPhysicalMonitors, physicalMonitors))
-                    {
-                        for (int i = 0; i < numPhysicalMonitors; i++)
-                        {
-                            if (currentIndex == targetIndex)
-                            {
-                                Logger.Log("MonitorApiHelper: invoking delegate action for physical monitor handle " + physicalMonitors[i].hPhysicalMonitor + "...");
-                                action(physicalMonitors[i].hPhysicalMonitor);
-                                Logger.Log("MonitorApiHelper: delegate action returned");
-                                found = true;
-                            }
-                            currentIndex++;
-                        }
-                        DestroyPhysicalMonitors(numPhysicalMonitors, physicalMonitors);
-                    }
-                }
-                return true;
-            }, IntPtr.Zero);
-        }
+internal static class MonitorApiHelper
+{
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    public struct PHYSICAL_MONITOR
+    {
+        public IntPtr hPhysicalMonitor;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string szPhysicalMonitorDescription;
     }
 
-    public static class MonitorManager
-    {
-        public static List<IMonitor> DiscoverMonitors()
-        {
-            var monitors = new List<IMonitor>();
+    public delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
 
-            // 1. Discover internal laptop monitors via WMI
-            try
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT
+    {
+        public int left;
+        public int top;
+        public int right;
+        public int bottom;
+    }
+
+    [DllImport("user32.dll")]
+    public static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumProc lpfnEnum, IntPtr dwData);
+
+    [DllImport("dxva2.dll", EntryPoint = "GetNumberOfPhysicalMonitorsFromHMONITOR", SetLastError = true)]
+    public static extern bool GetNumberOfPhysicalMonitorsFromHMONITOR(IntPtr hMonitor, out uint pdwNumberOfPhysicalMonitors);
+
+    [DllImport("dxva2.dll", EntryPoint = "GetPhysicalMonitorsFromHMONITOR", SetLastError = true)]
+    public static extern bool GetPhysicalMonitorsFromHMONITOR(IntPtr hMonitor, uint dwPhysicalMonitorArraySize, [Out] PHYSICAL_MONITOR[] pPhysicalMonitorArray);
+
+    [DllImport("dxva2.dll", EntryPoint = "DestroyPhysicalMonitors", SetLastError = true)]
+    public static extern bool DestroyPhysicalMonitors(uint dwPhysicalMonitorArraySize, [Out] PHYSICAL_MONITOR[] pPhysicalMonitorArray);
+
+    [DllImport("dxva2.dll", EntryPoint = "GetMonitorBrightness", SetLastError = true)]
+    public static extern bool GetMonitorBrightness(IntPtr hMonitor, out uint pdwMinimumBrightness, out uint pdwCurrentBrightness, out uint pdwMaximumBrightness);
+
+    [DllImport("dxva2.dll", EntryPoint = "SetMonitorBrightness", SetLastError = true)]
+    public static extern bool SetMonitorBrightness(IntPtr hMonitor, uint dwNewBrightness);
+
+    public delegate void PhysicalMonitorAction(IntPtr hPhysicalMonitor);
+
+    public static void OperateOnPhysicalMonitor(int targetIndex, PhysicalMonitorAction action)
+    {
+        int currentIndex = 0;
+        bool found = false;
+
+        EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, delegate (IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData)
+        {
+            if (found) return true;
+
+            if (GetNumberOfPhysicalMonitorsFromHMONITOR(hMonitor, out var numPhysicalMonitors) && numPhysicalMonitors > 0)
             {
-                using (var searcher = new ManagementObjectSearcher(new ManagementScope(@"root\wmi"), new SelectQuery("WmiMonitorBrightness")))
+                var physicalMonitors = new PHYSICAL_MONITOR[numPhysicalMonitors];
+                if (GetPhysicalMonitorsFromHMONITOR(hMonitor, numPhysicalMonitors, physicalMonitors))
                 {
-                    using (var collection = searcher.Get())
+                    for (int i = 0; i < numPhysicalMonitors; i++)
                     {
-                        foreach (ManagementObject mObj in collection)
+                        if (currentIndex == targetIndex)
                         {
-                            object instNameObj = mObj["InstanceName"];
-                            string instanceName = instNameObj != null ? instNameObj.ToString() : null;
-                            string friendlyName = "Встроенный экран";
-                            monitors.Add(new InternalMonitor(instanceName, friendlyName));
+                            Logger.Log($"MonitorApiHelper: invoking delegate action for physical monitor handle {physicalMonitors[i].hPhysicalMonitor}...");
+                            action(physicalMonitors[i].hPhysicalMonitor);
+                            Logger.Log("MonitorApiHelper: delegate action returned");
+                            found = true;
                         }
+                        currentIndex++;
                     }
+                    DestroyPhysicalMonitors(numPhysicalMonitors, physicalMonitors);
                 }
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine("WMI not supported or failed: " + ex.Message);
-            }
+            return true;
+        }, IntPtr.Zero);
+    }
+}
 
-            // 2. Discover external monitors via DDC/CI (Physical Monitor APIs)
-            int physicalIndex = 0;
+public static class MonitorManager
+{
+    public static List<IMonitor> DiscoverMonitors()
+    {
+        var monitors = new List<IMonitor>();
+
+        // 1. Discover internal laptop monitors via WMI
+        try
+        {
+            using var searcher = new ManagementObjectSearcher(new ManagementScope(@"root\wmi"), new SelectQuery("WmiMonitorBrightness"));
+            using var collection = searcher.Get();
+            foreach (var o in collection)
+            {
+                if (o is not ManagementObject mObj) continue;
+                
+                var instanceName = mObj["InstanceName"]?.ToString() ?? string.Empty;
+                var friendlyName = "Встроенный экран";
+                monitors.Add(new InternalMonitor(instanceName, friendlyName));
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Log($"WMI Monitor discovery FAILED: {ex.Message}");
+        }
+
+        // 2. Discover external monitors via DXVA2 Physical Monitor API
+        try
+        {
+            int index = 0;
             MonitorApiHelper.EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, delegate (IntPtr hMonitor, IntPtr hdcMonitor, ref MonitorApiHelper.RECT lprcMonitor, IntPtr dwData)
             {
-                uint numPhysicalMonitors = 0;
-                if (MonitorApiHelper.GetNumberOfPhysicalMonitorsFromHMONITOR(hMonitor, out numPhysicalMonitors) && numPhysicalMonitors > 0)
+                if (MonitorApiHelper.GetNumberOfPhysicalMonitorsFromHMONITOR(hMonitor, out var numPhysicalMonitors) && numPhysicalMonitors > 0)
                 {
                     var physicalMonitors = new MonitorApiHelper.PHYSICAL_MONITOR[numPhysicalMonitors];
                     if (MonitorApiHelper.GetPhysicalMonitorsFromHMONITOR(hMonitor, numPhysicalMonitors, physicalMonitors))
                     {
                         for (int i = 0; i < numPhysicalMonitors; i++)
                         {
-                            IntPtr hPhys = physicalMonitors[i].hPhysicalMonitor;
-                            string desc = physicalMonitors[i].szPhysicalMonitorDescription;
-                            
-                            // Verify DDC/CI support by attempting to get brightness
-                            uint min, cur, max;
-                            bool ddcSupported = MonitorApiHelper.GetMonitorBrightness(hPhys, out min, out cur, out max);
-
-                            if (ddcSupported)
+                            var description = physicalMonitors[i].szPhysicalMonitorDescription;
+                            if (string.IsNullOrEmpty(description))
                             {
-                                string monitorId = "EXTERNAL_" + physicalIndex;
-                                string displayName = string.IsNullOrEmpty(desc) ? "Внешний монитор " + (physicalIndex + 1) : desc;
-                                monitors.Add(new ExternalMonitor(monitorId, displayName, physicalIndex));
+                                description = $"Внешний монитор {index + 1}";
                             }
                             
-                            physicalIndex++;
+                            // Check if monitor actually supports brightness APIs
+                            if (MonitorApiHelper.GetMonitorBrightness(physicalMonitors[i].hPhysicalMonitor, out _, out _, out _))
+                            {
+                                monitors.Add(new ExternalMonitor(
+                                    $"External_{index}_{i}",
+                                    description,
+                                    index
+                                ));
+                            }
+                            index++;
                         }
                         MonitorApiHelper.DestroyPhysicalMonitors(numPhysicalMonitors, physicalMonitors);
                     }
                 }
                 return true;
             }, IntPtr.Zero);
-
-            return monitors;
         }
+        catch (Exception ex)
+        {
+            Logger.Log($"DDC/CI Monitor discovery FAILED: {ex.Message}");
+        }
+
+        return monitors;
     }
 }

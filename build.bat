@@ -1,25 +1,41 @@
 @echo off
+setlocal
+
+:: Find dotnet in path, or use our user-installed dotnet
+where dotnet >nul 2>nul
+if %ERRORLEVEL% equ 0 (
+    set DOTNET=dotnet
+) else (
+    if exist "C:\Users\Neuron\dotnet\dotnet.exe" (
+        set DOTNET="C:\Users\Neuron\dotnet\dotnet.exe"
+    ) else (
+        echo Error: dotnet SDK not found! Please install .NET SDK or run dotnet-install script.
+        pause
+        exit /b 1
+    )
+)
+
 echo ===================================================
-echo Compiling LuminaControl...
+echo Building LuminaControl on modern .NET...
 echo ===================================================
-
-set CSC="C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-set OUT="C:\Users\Neuron\.gemini\antigravity\scratch\LuminaControl\LuminaControl.exe"
-
-set REFS=/r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Management.dll /r:"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\System.Xaml.dll" /r:"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\WPF\PresentationCore.dll" /r:"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\WPF\PresentationFramework.dll" /r:"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\WPF\WindowsBase.dll"
-
-set FILES="C:\Users\Neuron\.gemini\antigravity\scratch\LuminaControl\Program.cs" "C:\Users\Neuron\.gemini\antigravity\scratch\LuminaControl\MonitorManager.cs" "C:\Users\Neuron\.gemini\antigravity\scratch\LuminaControl\MainWindow.cs" "C:\Users\Neuron\.gemini\antigravity\scratch\LuminaControl\Styles.cs" "C:\Users\Neuron\.gemini\antigravity\scratch\LuminaControl\ModernSlider.cs" "C:\Users\Neuron\.gemini\antigravity\scratch\LuminaControl\Logger.cs"
-
-%CSC% /target:winexe /win32icon:"C:\Users\Neuron\.gemini\antigravity\scratch\LuminaControl\app.ico" /out:%OUT% %REFS% %FILES%
+%DOTNET% build -c Release
 
 if %ERRORLEVEL% equ 0 (
     echo ===================================================
-    echo Compilation SUCCESSFUL!
-    echo Executable created: LuminaControl.exe
+    echo Publishing self-contained single-file executable...
     echo ===================================================
+    %DOTNET% publish -c Release -r win-x64 -p:PublishSingleFile=true -p:SelfContained=true -p:PublishReadyToRun=true --self-contained true
+    
+    if %ERRORLEVEL% equ 0 (
+        echo ===================================================
+        echo Success! Executable created in:
+        echo bin\Release\net8.0-windows\win-x64\publish\LuminaControl.exe
+        echo ===================================================
+    ) else (
+        echo Publish FAILED!
+    )
 ) else (
-    echo ===================================================
-    echo Compilation FAILED!
-    echo ===================================================
-    pause
+    echo Build FAILED!
 )
+
+pause
