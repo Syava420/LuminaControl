@@ -1,0 +1,13 @@
+# Exclude compiled binaries
+*.exe
+*.dll
+*.pdb
+
+# Exclude user log files
+*Log.txt
+*Error.txt
+
+# VS/Environment files
+.vs/
+bin/
+obj/
