@@ -39,6 +39,17 @@ public static class Program
             var app = new Application();
             app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
+            // Global Exception Handlers
+            AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+            {
+                Logger.Log($"GLOBAL UNHANDLED EXCEPTION: {e.ExceptionObject}");
+            };
+            app.DispatcherUnhandledException += (s, e) =>
+            {
+                Logger.Log($"DISPATCHER UNHANDLED EXCEPTION: {e.Exception}");
+                e.Handled = true;
+            };
+
             // 3. Get Current Startup Settings
             bool startWithWindows = GetStartupSetting();
 
