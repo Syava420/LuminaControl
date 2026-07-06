@@ -37,6 +37,15 @@ public class MainWindow : Window
         Background = Brushes.Transparent;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
+        try
+        {
+            Icon = System.Windows.Media.Imaging.BitmapFrame.Create(new Uri("pack://application:,,,/LuminaControl;component/app.ico", UriKind.RelativeOrAbsolute));
+        }
+        catch (Exception ex)
+        {
+            Logger.Log($"Failed to load window icon: {ex.Message}");
+        }
+
         // Create Visual Hierarchy
         InitializeUI(startWithWindows);
         
