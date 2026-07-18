@@ -19,6 +19,12 @@ public static class Program
     {
         Logger.Init();
         Logger.Log("App starting on modern .NET 8...");
+        
+        // Initialize WinForms visual styles for ContextMenuStrip stability
+        System.Windows.Forms.Application.EnableVisualStyles();
+        System.Windows.Forms.Application.SetCompatibleTextRenderingDefault(false);
+        System.Windows.Forms.Application.SetUnhandledExceptionMode(System.Windows.Forms.UnhandledExceptionMode.CatchException);
+
         try
         {
             // 1. Single Instance Check using Mutex
@@ -48,6 +54,10 @@ public static class Program
             {
                 Logger.Log($"DISPATCHER UNHANDLED EXCEPTION: {e.Exception}");
                 e.Handled = true;
+            };
+            System.Windows.Forms.Application.ThreadException += (s, e) =>
+            {
+                Logger.Log($"WINFORMS THREAD EXCEPTION: {e.Exception}");
             };
 
             // 3. Get Current Startup Settings and Check if Minimized
