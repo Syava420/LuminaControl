@@ -50,18 +50,31 @@ public static class Program
                 e.Handled = true;
             };
 
-            // 3. Get Current Startup Settings
+            // 3. Get Current Startup Settings and Check if Minimized
             bool startWithWindows = GetStartupSetting();
+            bool startMinimized = false;
+            string[] args = Environment.GetCommandLineArgs();
+            foreach (var arg in args)
+            {
+                if (arg.Equals("--minimized", StringComparison.OrdinalIgnoreCase))
+                {
+                    startMinimized = true;
+                    break;
+                }
+            }
 
-            // 4. Create and Show Main Window
+            // 4. Create Main Window
             _mainWindow = new MainWindow(startWithWindows, SetStartupSetting);
-            _mainWindow.Show();
+            if (!startMinimized)
+            {
+                _mainWindow.Show();
+            }
 
             // 5. Setup System Tray Icon
             SetupTrayIcon(app);
 
             // 6. Run Application Event Loop
-            app.Run(_mainWindow);
+            app.Run();
 
             // 7. Cleanup on Exit
             if (_notifyIcon != null)
@@ -134,23 +147,31 @@ public static class Program
     {
         try
         {
-            // Generate a custom icon in memory (Indigo circle with a white glowing center)
+            // Generate a custom icon in memory (monochrome dark slate sun)
             using var bmp = new Bitmap(32, 32);
             using (var g = Graphics.FromImage(bmp))
             {
                 g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
                 g.Clear(Color.Transparent);
 
-                // Outer glowing blue/indigo ring
-                using (var brushOuter = new SolidBrush(Color.FromArgb(0x63, 0x66, 0xF1)))
-                {
-                    g.FillEllipse(brushOuter, 4, 4, 24, 24);
-                }
+                // Dark slate charcoal color (crisp line)
+                using var pen = new Pen(Color.FromArgb(0x3E, 0x44, 0x4D), 2.5f);
+                
+                // Draw sun center
+                g.DrawEllipse(pen, 10, 10, 12, 12);
 
-                // Inner glowing white core
-                using (var brushInner = new SolidBrush(Color.White))
+                // Draw rays
+                int cx = 16, cy = 16;
+                double r1 = 9.0;
+                double r2 = 13.0;
+                for (int i = 0; i < 8; i++)
                 {
-                    g.FillEllipse(brushInner, 10, 10, 12, 12);
+                    double angle = i * Math.PI / 4;
+                    float x1 = (float)(cx + r1 * Math.Cos(angle));
+                    float y1 = (float)(cy + r1 * Math.Sin(angle));
+                    float x2 = (float)(cx + r2 * Math.Cos(angle));
+                    float y2 = (float)(cy + r2 * Math.Sin(angle));
+                    g.DrawLine(pen, x1, y1, x2, y2);
                 }
             }
             
@@ -213,8 +234,8 @@ public static class Program
                     // In modern .NET Core, Assembly.GetExecutingAssembly().Location might return dll path, 
                     // so we use AppContext.BaseDirectory or Process path instead!
                     string exePath = Environment.ProcessPath ?? AppDomain.CurrentDomain.BaseDirectory + "LuminaControl.exe";
-                    key.SetValue("LuminaControl", $"\"{exePath}\"");
-                    Logger.Log($"Auto-startup enabled for path: {exePath}");
+                    key.SetValue("LuminaControl", $"\"{exePath}\" --minimized");
+                    Logger.Log($"Auto-startup enabled for path: {exePath} --minimized");
                 }
                 else
                 {
