@@ -127,11 +127,20 @@ public static class Program
             }
         };
 
-        // Context Menu
-        var contextMenu = new System.Windows.Forms.ContextMenuStrip();
+        // Context Menu with Dark Theme
+        var contextMenu = new System.Windows.Forms.ContextMenuStrip
+        {
+            ShowImageMargin = false,
+            ShowCheckMargin = false,
+            BackColor = System.Drawing.Color.FromArgb(0x16, 0x18, 0x1C),
+            ForeColor = System.Drawing.Color.FromArgb(0xF3, 0xF4, 0xF6),
+            Font = new System.Drawing.Font("Segoe UI", 9f),
+            Renderer = new DarkMenuRenderer()
+        };
         
         var openItem = new System.Windows.Forms.ToolStripMenuItem("Открыть LuminaControl");
         openItem.Click += (s, e) => RestoreWindow();
+        openItem.ForeColor = System.Drawing.Color.FromArgb(0xF3, 0xF4, 0xF6);
         
         var exitItem = new System.Windows.Forms.ToolStripMenuItem("Выход");
         exitItem.Click += (s, e) =>
@@ -145,6 +154,7 @@ public static class Program
             }
             app.Shutdown();
         };
+        exitItem.ForeColor = System.Drawing.Color.FromArgb(0xF3, 0xF4, 0xF6);
 
         contextMenu.Items.Add(openItem);
         contextMenu.Items.Add(new System.Windows.Forms.ToolStripSeparator()); // Separator
@@ -258,5 +268,39 @@ public static class Program
         {
             Logger.Log($"Error setting startup registry key: {ex.Message}");
         }
+    }
+}
+
+internal class DarkColorTable : System.Windows.Forms.ProfessionalColorTable
+{
+    public override System.Drawing.Color ToolStripDropDownBackground => System.Drawing.Color.FromArgb(0x16, 0x18, 0x1C);
+    public override System.Drawing.Color ImageMarginGradientBegin => System.Drawing.Color.FromArgb(0x16, 0x18, 0x1C);
+    public override System.Drawing.Color ImageMarginGradientMiddle => System.Drawing.Color.FromArgb(0x16, 0x18, 0x1C);
+    public override System.Drawing.Color ImageMarginGradientEnd => System.Drawing.Color.FromArgb(0x16, 0x18, 0x1C);
+    public override System.Drawing.Color MenuBorder => System.Drawing.Color.FromArgb(0x2A, 0x2F, 0x35);
+    public override System.Drawing.Color MenuItemBorder => System.Drawing.Color.Transparent;
+    public override System.Drawing.Color MenuItemSelected => System.Drawing.Color.FromArgb(0x2A, 0x2F, 0x35);
+    public override System.Drawing.Color MenuItemSelectedGradientBegin => System.Drawing.Color.FromArgb(0x2A, 0x2F, 0x35);
+    public override System.Drawing.Color MenuItemSelectedGradientEnd => System.Drawing.Color.FromArgb(0x2A, 0x2F, 0x35);
+    public override System.Drawing.Color MenuItemPressedGradientBegin => System.Drawing.Color.FromArgb(0x16, 0x18, 0x1C);
+    public override System.Drawing.Color MenuItemPressedGradientEnd => System.Drawing.Color.FromArgb(0x16, 0x18, 0x1C);
+    public override System.Drawing.Color SeparatorDark => System.Drawing.Color.FromArgb(0x2A, 0x2F, 0x35);
+    public override System.Drawing.Color SeparatorLight => System.Drawing.Color.Transparent;
+}
+
+internal class DarkMenuRenderer : System.Windows.Forms.ToolStripProfessionalRenderer
+{
+    public DarkMenuRenderer() : base(new DarkColorTable()) { }
+
+    protected override void OnRenderItemText(System.Windows.Forms.ToolStripItemTextRenderEventArgs e)
+    {
+        e.TextColor = System.Drawing.Color.FromArgb(0xF3, 0xF4, 0xF6); // Always light text
+        base.OnRenderItemText(e);
+    }
+    
+    protected override void OnRenderToolStripBorder(System.Windows.Forms.ToolStripRenderEventArgs e)
+    {
+        using var pen = new System.Drawing.Pen(System.Drawing.Color.FromArgb(0x2A, 0x2F, 0x35), 1);
+        e.Graphics.DrawRectangle(pen, 0, 0, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1);
     }
 }
