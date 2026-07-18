@@ -116,6 +116,10 @@ public static class Program
             _notifyIcon.Visible = false;
             _notifyIcon.Dispose();
             _trayIcon?.Dispose();
+            if (_mainWindow != null)
+            {
+                _mainWindow.AllowClose = true;
+            }
             app.Shutdown();
         };
 

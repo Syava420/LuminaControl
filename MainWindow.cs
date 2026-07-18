@@ -24,6 +24,8 @@ public class MainWindow : Window
     private bool _isUpdatingLinked;
     private readonly Action<bool> _onStartupChanged;
 
+    public bool AllowClose { get; set; }
+
     public MainWindow(bool startWithWindows, Action<bool> onStartupChanged)
     {
         _onStartupChanged = onStartupChanged;
@@ -415,6 +417,19 @@ public class MainWindow : Window
 
             controlGroup.UpdateBrightness(newValue);
         };
+    }
+
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        if (!AllowClose)
+        {
+            e.Cancel = true;
+            Hide();
+        }
+        else
+        {
+            base.OnClosing(e);
+        }
     }
 }
 
