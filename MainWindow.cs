@@ -150,7 +150,7 @@ public class MainWindow : Window
         
         var minBtn = new Button { Content = "—" };
         Styles.StyleMinButton(minBtn);
-        minBtn.Click += (s, e) => WindowState = WindowState.Minimized;
+        minBtn.Click += (s, e) => Hide();
 
         var closeBtn = new Button { Content = "✕" };
         Styles.StyleCloseButton(closeBtn);

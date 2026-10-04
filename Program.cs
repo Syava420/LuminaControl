@@ -27,19 +27,28 @@ public static class Program
 
         try
         {
-            // 1. Single Instance Check using Mutex
+            // 1. Single Instance Check using Mutex & Restore Event
+            const string restoreEventName = "LuminaControl_RestoreWindow_Event";
             _instanceMutex = new Mutex(true, "LuminaControl_SingleInstance_Mutex_Key", out var isNewInstance);
 
             if (!isNewInstance)
             {
-                MessageBox.Show(
-                    "LuminaControl уже запущен. Проверьте системный трей.",
-                    "LuminaControl",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information
-                );
+                // Signal running instance to show/restore its window
+                try
+                {
+                    using var evt = EventWaitHandle.OpenExisting(restoreEventName);
+                    evt.Set();
+                }
+                catch { }
                 return;
             }
+
+            // Listen for restore events from subsequent launches
+            var restoreEvent = new EventWaitHandle(false, EventResetMode.AutoReset, restoreEventName);
+            ThreadPool.RegisterWaitForSingleObject(restoreEvent, (state, timedOut) =>
+            {
+                Application.Current?.Dispatcher?.Invoke(() => RestoreWindow());
+            }, null, -1, false);
 
             // 2. Initialize WPF Application
             var app = new Application();
@@ -111,7 +120,7 @@ public static class Program
     {
         _notifyIcon = new System.Windows.Forms.NotifyIcon();
         _notifyIcon.Text = "LuminaControl - Яркость мониторов";
-        _trayIcon = GenerateTrayIcon();
+        _trayIcon = GetTrayIcon();
         _notifyIcon.Icon = _trayIcon;
         _notifyIcon.Visible = true;
 
@@ -163,19 +172,45 @@ public static class Program
         _notifyIcon.ContextMenuStrip = contextMenu;
     }
 
+    private static Icon GetTrayIcon()
+    {
+        try
+        {
+            string? exePath = Environment.ProcessPath;
+            if (!string.IsNullOrEmpty(exePath) && System.IO.File.Exists(exePath))
+            {
+                var assoc = Icon.ExtractAssociatedIcon(exePath);
+                if (assoc != null) return assoc;
+            }
+        }
+        catch { }
+
+        try
+        {
+            string localIco = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app.ico");
+            if (System.IO.File.Exists(localIco))
+            {
+                return new Icon(localIco);
+            }
+        }
+        catch { }
+
+        return GenerateTrayIcon();
+    }
+
     private static Icon GenerateTrayIcon()
     {
         try
         {
-            // Generate a custom icon in memory (monochrome dark slate sun)
+            // Fallback: Generate a crisp white minimalist sun icon in memory
             using var bmp = new Bitmap(32, 32);
             using (var g = Graphics.FromImage(bmp))
             {
                 g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
                 g.Clear(Color.Transparent);
 
-                // Dark slate charcoal color (crisp line)
-                using var pen = new Pen(Color.FromArgb(0x3E, 0x44, 0x4D), 2.5f);
+                // Crisp light off-white color (clearly visible on dark taskbars)
+                using var pen = new Pen(Color.FromArgb(0xF3, 0xF4, 0xF6), 2.5f);
                 
                 // Draw sun center
                 g.DrawEllipse(pen, 10, 10, 12, 12);
@@ -221,6 +256,9 @@ public static class Program
         }
 
         _mainWindow.Activate();
+        _mainWindow.Topmost = true;
+        _mainWindow.Topmost = false;
+        _mainWindow.Focus();
     }
 
     // Startup Registry Helpers
