@@ -6,7 +6,7 @@ namespace LuminaControl;
 public static class Logger
 {
     private static readonly object LogLock = new();
-    private static readonly string LogPath = @"C:\Users\Neuron\Desktop\LuminaControl_Log.txt";
+    private static readonly string LogPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "LuminaControl_Log.txt");
 
     public static void Init()
     {

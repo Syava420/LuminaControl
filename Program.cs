@@ -109,7 +109,7 @@ public static class Program
         {
             try
             {
-                System.IO.File.WriteAllText(@"C:\Users\Neuron\Desktop\LuminaControl_Error.txt", ex.ToString());
+                System.IO.File.WriteAllText(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "LuminaControl_Error.txt"), ex.ToString());
             }
             catch { }
             MessageBox.Show($"Критическая ошибка при запуске:\n{ex}", "LuminaControl Error", MessageBoxButton.OK, MessageBoxImage.Error);
